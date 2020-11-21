@@ -300,6 +300,7 @@ class GatewayKernelManager(MappingKernelManager):
 
     # We'll maintain our own set of kernel ids
     _kernels = {}
+    restart_callbacks = {}
 
     def __init__(self, **kwargs):
         super(GatewayKernelManager, self).__init__(**kwargs)
@@ -440,6 +441,11 @@ class GatewayKernelManager(MappingKernelManager):
         self.log.debug("Shutdown kernel response: %d %s", response.code, response.reason)
         self.remove_kernel(kernel_id)
 
+    def add_restart_callback(self, kernel_id, callback):
+        if kernel_id not in self.restart_callbacks:
+            self.restart_callbacks[kernel_id] = []
+        self.restart_callbacks[kernel_id].append(callback)
+
     async def restart_kernel(self, kernel_id, now=False, **kwargs):
         """Restart a kernel by its kernel uuid.
 
@@ -451,6 +457,12 @@ class GatewayKernelManager(MappingKernelManager):
         kernel_url = self._get_kernel_endpoint_url(kernel_id) + '/restart'
         self.log.debug("Request restart kernel at: %s", kernel_url)
         response = await gateway_request(kernel_url, method='POST', body=json_encode({}))
+
+        # execute restart callbacks
+        if kernel_id in self.restart_callbacks:
+            for callback in self.restart_callbacks[kernel_id]:
+                callback()
+
         self.log.debug("Restart kernel response: %d %s", response.code, response.reason)
 
     async def interrupt_kernel(self, kernel_id, **kwargs):

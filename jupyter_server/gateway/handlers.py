@@ -4,6 +4,7 @@
 import os
 import logging
 import mimetypes
+import json
 
 from ..base.handlers import APIHandler, JupyterHandler
 from ..utils import url_path_join
@@ -17,6 +18,7 @@ from tornado.escape import url_escape, json_decode, utf8
 
 from ipython_genutils.py3compat import cast_unicode
 from jupyter_client.session import Session
+from jupyter_client.jsonutil import date_default
 from traitlets.config.configurable import LoggingConfigurable
 
 from .managers import GatewayClient
@@ -76,10 +78,19 @@ class WebSocketChannelsHandler(WebSocketHandler, JupyterHandler):
 
         self.ping(b'')
 
+    def on_kernel_restart(self):
+        """Inform client about kernel restart"""
+        msg = self.session.msg("status",
+            {'execution_state': 'restarting'}
+        )
+        msg['channel'] = 'iopub'
+        self.write_message(json.dumps(msg, default=date_default))
+
     def open(self, kernel_id, *args, **kwargs):
         """Handle web socket connection open to notebook server and delegate to gateway web socket handler """
         self.ping_callback = PeriodicCallback(self.send_ping, GATEWAY_WS_PING_INTERVAL_SECS * 1000)
         self.ping_callback.start()
+        self.kernel_manager.add_restart_callback(kernel_id, self.on_kernel_restart)
 
         self.gateway.on_open(
             kernel_id=kernel_id,
